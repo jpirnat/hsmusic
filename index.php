@@ -1,6 +1,15 @@
 <?php
-	include_once 'dbinfo.php';
+	require 'vendor/autoload.php';
 
+	$dotenv = new Dotenv\Dotenv(__DIR__);
+	$dotenv->load();
+	
+	$dbhost = getenv('DB_HOST');
+	$dbport = getenv('DB_PORT');
+	$dbname = getenv('DB_NAME');
+	$dbuser = getenv('DB_USER');
+	$dbpass = getenv('DB_PASS');
+	
 	try
 	{
 		$db = new PDO("mysql:host={$dbhost};port={$dbport};dbname={$dbname}", $dbuser, $dbpass);
