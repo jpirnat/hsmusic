@@ -1,20 +1,52 @@
 <?php
-	session_start();
-	
-	include_once("dbinfo.php");
-	$mysqli = new mysqli($dbhost, $dbuser, $dbpass, $dbname);
-		
-	if ($mysqli->connect_error)
+	include_once 'dbinfo.php';
+
+	try
 	{
-		die('Connect Error: ' . $mysqli->connect_error());
+		$db = new PDO("mysql:host={$dbhost};port={$dbport};dbname={$dbname}", $dbuser, $dbpass);
+	}
+	catch (PDOException $e)
+	{
+		echo 'Connection failed: ' . $e->getMessage();
+	}
+
+	$stmt = $db->query('SELECT song_id, album, track_number, song_title, song_url, song_length FROM songs');
+
+	$results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+	function getSongArtists($db, $song_id)
+	{
+		$stmt = $db->prepare('SELECT artcred_text FROM artist_credits WHERE song_id=:song_id');
+		$stmt->bindValue(':song_id', $song_id, PDO::PARAM_INT);
+		$stmt->execute();
+		$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+		return $rows;
+	}
+
+	function getSongRemixes($db, $song_id)
+	{
+		$stmt = $db->prepare('SELECT song_title, song_url FROM songs WHERE song_id IN (SELECT beingremixed_id FROM remixes WHERE song_id=:song_id)');
+		$stmt->bindValue(':song_id', $song_id, PDO::PARAM_INT);
+		$stmt->execute();
+		$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+		return $rows;
+	}
+
+	function getSongCommentaries($db, $song_id)
+	{
+		$stmt = $db->prepare('SELECT commentary_url FROM Commentaries WHERE song_id=:song_id');
+		$stmt->bindValue(':song_id', $song_id, PDO::PARAM_INT);
+		$stmt->execute();
+		$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+		return $rows;
 	}
 ?>
 <!DOCTYPE html>
 <html>
 	<head>
-		<script type="text/javascript" src="/../include/tablesorter/jquery-latest.js"></script> 
-		<script type="text/javascript" src="/../include/tablesorter/jquery.tablesorter.js"></script> 
-		<link rel="stylesheet" type="text/css" href="/../include/tablesorter/themes/blue/style.css">
+		<script type="text/javascript" src="tablesorter/jquery-latest.js"></script> 
+		<script type="text/javascript" src="tablesorter/jquery.tablesorter.js"></script> 
+		<link rel="stylesheet" type="text/css" href="tablesorter/themes/blue/style.css">
 	</head>
 	<body>
 
@@ -31,71 +63,51 @@
 				</tr>
 			</thead>
 			<tbody>
-<?php
-	$sql = "SELECT song_id, album, track_number, song_title, song_url, song_length FROM Songs";
-	$result = $mysqli->query($sql);
-
-	while ($row = $result->fetch_assoc())
-	{
-		$song_id = $row["song_id"];
-		$album = $row["album"];
-		$tracknumber = $row["track_number"];
-		$songtitle = $row["song_title"];
-		$songurl = $row["song_url"];
-		$songlength = $row["song_length"];
-?>
+<?php foreach ($results as $row): ?>
 <tr>
-	<td><?php echo $album; ?></td>
-	<td><?php echo $tracknumber; ?></td>
-	<td><a href="<?php echo $songurl; ?>"><?php echo $songtitle; ?></a></td>
-	<td><?php echo $songlength; ?></td>
-<?php
-		// artist credits
-		echo "\t<td>";
-		$artist_sql = "SELECT artcred_text FROM Artist_Credits WHERE song_id=$song_id";
-		$artist_result = $mysqli->query($artist_sql);
-		while ($artist_row = $artist_result->fetch_assoc())
-		{	
-			echo "\n\t\t" . $artist_row["artcred_text"] . " <br/>";
-		}
-		echo "\n\t</td>\n";
-		
-		// remixes
-		echo "\t<td>";
-		$remix_sql = "SELECT song_title, song_url FROM Songs WHERE song_id IN (SELECT beingremixed_id FROM Remixes WHERE song_id=$song_id)";
-		$remix_result = $mysqli->query($remix_sql);
-		while ($remix_row = $remix_result->fetch_assoc())
-		{
-			$remix_title = $remix_row["song_title"];
-			$remix_url = $remix_row["song_url"];
-			echo "\n\t\t<a href=\"$remix_url\">$remix_title</a> <br/>";
-		}
-		echo "\n\t</td>\n";
-		
-		// commentary
-		echo "\t<td>";
-		$comm_sql = "SELECT commentary_url FROM Commentaries WHERE song_id=$song_id";
-		$comm_result = $mysqli->query($comm_sql);
-		while ($comm_row = $comm_result->fetch_assoc())
-		{
-			$comm_url = $comm_row["commentary_url"];
-			echo "\n\t\t$comm_url <br/>";
-		}
-		echo "\n\t</td>\n";
-		
-		echo "</tr>\n";
-	} // while ($row = $result->fetch_assoc())
+	<td><?php echo $row['album']; ?></td>
+	<td><?php echo $row['track_number']; ?></td>
+	<td><a href="<?php echo $row['song_url']; ?>"><?php echo $row['song_title']; ?></a></td>
+	<td><?php echo $row['song_length']; ?></td>
+
+	<td>
+<?php // artists
+$artists = getSongArtists($db, $row['song_id']);
+foreach ($artists as $artist)
+{
+	echo $artist['artcred_text']. '<br>';
+}
 ?>
+	</td>
+	
+	<td>
+<?php // remixes
+$remixes = getSongRemixes($db, $row['song_id']);
+foreach ($remixes as $remix)
+{
+	echo "<a href='{$remix['song_url']}'>{$remix['song_title']}</a><br>";
+}
+?>
+	</td>
+	
+	<td>
+<?php // commentary
+$commentaries = getSongCommentaries($db, $row['song_id']);
+foreach ($commentaries as $commentary)
+{
+	echo $commentary['commentary_url'] . '<br>';
+}
+?>
+	</td>
+</tr>
+<?php endforeach; ?>
 			</tbody>
 		</table>
 
 <script type="text/javascript">
-$(document).ready(
-	function()
-	{
-		$("#myTable").tablesorter();
-	}
-); 
+$(document).ready(function() {
+	$("#myTable").tablesorter();
+}); 
 </script>
 
 	</body>
